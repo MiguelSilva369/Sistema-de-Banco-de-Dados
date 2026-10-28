@@ -1,8 +1,8 @@
 # Roteiro prático 02. Modelagem e consultas no plano de saúde
 
 **Disciplina:** Sistemas de Banco de Dados I. Sistemas de Informação. UNIPAM.
-**Itens da ementa:** 3.3, transações e violações de restrição. 5.2 a 5.6, entidades, atributos, chaves, relacionamentos, restrições estruturais, entidade fraca e grau dos relacionamentos. 6.1 e 6.2, subclasses, especialização e generalização. 7.1, consultas com junção, agregação e subconsultas. 7.2, visões. 7.4, operações de conjunto. 8.1 a 8.4, diretrizes de projeto, dependências funcionais e formas normais.
-**Referência:** ELMASRI, R. NAVATHE, S. *Sistemas de Banco de Dados*. 7. ed. São Paulo: Pearson. Capítulos 3, 4, 6, 7, 9, 14 e 20.
+**Itens da ementa:** 3.3, transações e violações de restrição. 5.2 a 5.6, entidades, atributos, chaves, relacionamentos, restrições estruturais, entidade fraca e grau dos relacionamentos. 6.1 e 6.2, subclasses, especialização e generalização. 4.2, restrições em SQL: chave primária composta e chave gerada. 7.1, consultas com junção, autojunção, agregação, subconsultas aninhadas e a cláusula `WITH`. 7.2, visões. 7.4, operações de conjunto. 8.1 a 8.4, diretrizes de projeto, dependências funcionais e formas normais.
+**Referência:** ELMASRI, R. NAVATHE, S. *Sistemas de Banco de Dados*. 7. ed. São Paulo: Pearson. Capítulos 3, 4, 5, 6, 7, 9, 14, 19 e 20.
 **Ambiente:** PostgreSQL 17 em contêiner Docker, acessado pela extensão Database Client. Diagrama na extensão Draw.io.
 **Cenário:** banco de dados `bd_plano_saude`, de um consultório credenciado a planos de saúde, que atende pacientes de convênios e pacientes particulares.
 
@@ -42,11 +42,11 @@ O roteiro é dividido em dez partes, e cada uma depende das anteriores.
 | Parte | Assunto | Instruções e conceitos |
 |---|---|---|
 | 1 | O minimundo e o modelo conceitual | tipos de atributo, chaves, cardinalidade, participação, papéis, entidade fraca, especialização |
-| 2 | Do modelo às tabelas | mapeamento do modelo para o relacional, chave composta, autorreferência, `ON DELETE CASCADE` |
+| 2 | Do modelo às tabelas | mapeamento do modelo para o relacional, chave composta e chave gerada, autorreferência, `ON DELETE CASCADE` |
 | 3 | A carga e as restrições | ordem de inserção, violações de chave primária e estrangeira |
-| 4 | Consultas com junção | junção com a superclasse, junção de uma tabela com ela mesma, atributo derivado, junções externas |
+| 4 | Consultas com junção | junção com a superclasse, autojunção e apelidos por papel, atributo derivado, junções externas |
 | 5 | Agregação sobre tabelas relacionadas | `GROUP BY` e `HAVING` depois da junção |
-| 6 | Subconsultas | subconsulta escalar, `IN`, `EXISTS`, `NOT EXISTS`, subconsulta correlacionada |
+| 6 | Subconsultas | subconsulta escalar, `IN`, `EXISTS`, `NOT EXISTS`, subconsulta correlacionada, subconsulta no `FROM`, cláusula `WITH` (CTE) |
 | 7 | Operações de conjunto | `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT` |
 | 8 | Visões | `CREATE VIEW` e consulta sobre a visão |
 | 9 | Transações | `BEGIN`, `COMMIT`, `ROLLBACK` |
@@ -59,12 +59,12 @@ Ao final, os seguintes resultados devem estar assegurados.
 | Modelo conceitual | Identificar, em regras escritas, entidades, atributos, chaves, relacionamentos e as suas restrições, e desenhar o diagrama |
 | Mapeamento | Transformar cada elemento do diagrama em tabelas, colunas e restrições |
 | Consultas | Escrever junções de várias tabelas, inclusive de uma tabela com ela mesma, e agregar sobre o resultado |
-| Subconsultas e conjuntos | Responder a perguntas que dependem de outra consulta e combinar resultados de consultas diferentes |
+| Subconsultas e conjuntos | Responder a perguntas que dependem de outra consulta, escrever a mesma consulta como junção, como subconsulta e com `WITH`, e combinar resultados de consultas diferentes |
 | Visões e transações | Guardar uma consulta como visão e executar um conjunto de instruções como uma unidade |
 
 ### 1.1 Delimitação
 
-O roteiro trata as visões apenas na sua forma de consulta guardada, sem atualização por meio da visão. As transações aparecem como unidade de execução, sem os problemas de concorrência entre usuários. A normalização é tratada na Parte 10, sobre uma planilha do consultório, até a terceira forma normal. As formas normais seguintes ficam fora.
+O roteiro trata as visões apenas na sua forma de consulta guardada, sem atualização por meio da visão. As transações aparecem como unidade de execução, sem os problemas de concorrência entre usuários. A normalização é tratada na Parte 10, sobre uma planilha do consultório, até a terceira forma normal. As formas normais seguintes ficam fora. A cláusula `WITH` é tratada na sua forma simples, e a consulta recursiva, `WITH RECURSIVE` (ELMASRI e NAVATHE, seção 7.1.10), fica fora, porque, nos dados do consultório, o autorrelacionamento tem um único nível: nenhum dependente tem dependentes.
 
 ---
 
@@ -331,6 +331,67 @@ A consulta referencia `paciente` e `medico`, e não `pessoa`: só um paciente po
 
 A chave primária de `exame_solicitado` reúne a chave da proprietária, `consulta_id`, e a chave parcial, `numero`. A cláusula `ON DELETE CASCADE`, apresentada nos slides da aula anterior, aparece aqui pela primeira vez em uma tabela. Ela expressa a dependência de existência da entidade fraca: se a consulta for excluída, os exames dela são excluídos junto, porque não existem sem ela. No hortifrúti, a mesma cláusula foi recusada, porque apagaria vendas já realizadas. A decisão sobre a ação na exclusão vem, como sempre, do minimundo.
 
+### 4.8 Chave composta ou chave gerada
+
+Três tabelas do modelo têm chave primária **composta**, formada por mais de uma coluna: `telefone`, `(pessoa_id, numero)`, `credenciamento`, `(medico_id, convenio_id)`, e `exame_solicitado`, `(consulta_id, numero)`. Nenhuma das colunas sozinha identifica a linha, e só o conjunto não se repete. O Elmasri chama de chave composta o atributo-chave formado por vários atributos componentes (ELMASRI e NAVATHE, seção 3.3.2), e os passos 2, 5 e 6 do mapeamento produzem exatamente essas chaves para a entidade fraca, o relacionamento N:M e o atributo multivalorado (ELMASRI e NAVATHE, seção 9.1). A chave composta é, portanto, um recurso legítimo do modelo relacional e da linguagem SQL, e o resultado direto do mapeamento.
+
+Na prática de projeto, no entanto, a recomendação mais adotada é outra: dar a cada tabela uma chave primária de **uma única coluna, gerada pelo servidor**, sem significado no minimundo, e garantir a unicidade do conjunto de colunas com `UNIQUE`. Essa coluna é chamada de chave **artificial** ou **substituta**, e o próprio Elmasri a apresenta como alternativa para transformar uma entidade fraca em entidade regular (ELMASRI e NAVATHE, seções 3.9.1 e 9.2.3). Foi a forma usada em `itens_venda`, no roteiro prático 01, com `id` gerado e `UNIQUE (venda_id, produto_id)`. Os motivos aparecem quando outra tabela precisa referenciar a chave composta.
+
+Suponha que o consultório passe a registrar o laudo de cada exame, em uma tabela `resultado_exame`. Com a chave composta, a tabela que referencia precisa carregar as duas colunas, e a chave estrangeira também é composta.
+
+```sql
+-- Exemplo para comparacao: nao faz parte do modelo do consultorio
+CREATE TABLE resultado_exame (
+    id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    consulta_id INTEGER NOT NULL,
+    numero      INTEGER NOT NULL,
+    laudo       TEXT    NOT NULL,
+    FOREIGN KEY (consulta_id, numero) REFERENCES exame_solicitado (consulta_id, numero)
+);
+```
+
+Com a chave gerada, a tabela de exames ganha um `id`, o par continua protegido por `UNIQUE`, e quem referencia carrega uma única coluna.
+
+```sql
+-- Exemplo para comparacao: a mesma entidade com chave gerada
+CREATE TABLE exame_pedido (
+    id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    consulta_id INTEGER NOT NULL REFERENCES consulta (id) ON DELETE CASCADE,
+    numero      INTEGER NOT NULL,
+    exame       TEXT    NOT NULL,
+    UNIQUE (consulta_id, numero)
+);
+
+CREATE TABLE resultado_exame (
+    id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    exame_pedido_id INTEGER NOT NULL REFERENCES exame_pedido (id),
+    laudo           TEXT    NOT NULL
+);
+```
+
+As duas formas guardam os mesmos fatos e recusam os mesmos dados inválidos. A tentativa de gravar de novo o exame número 2 da consulta 1 em `exame_pedido` é recusada pelo `UNIQUE`, como seria pela chave primária composta.
+
+```
+ERROR:  duplicate key value violates unique constraint "exame_pedido_consulta_id_numero_key"
+DETAIL:  Key (consulta_id, numero)=(1, 2) already exists.
+```
+
+A diferença está no que acontece em volta da tabela.
+
+| Aspecto | Chave composta | Chave gerada com `UNIQUE` |
+|---|---|---|
+| Chave estrangeira em outra tabela | repete todas as colunas da chave | uma coluna |
+| Condição de junção | uma igualdade para cada coluna, e esquecer uma delas devolve linhas a mais sem nenhum erro | uma igualdade |
+| Alteração de um valor da chave, como renumerar os exames de uma consulta | precisa ser propagada a todas as tabelas que referenciam | só a coluna da própria tabela muda, porque o `id` não muda |
+| Identificação da linha por um programa, como em um endereço `/exames/7` | exige os dois valores | um valor |
+| Unicidade do conjunto | garantida pela chave primária | garantida pelo `UNIQUE`, que não pode ser esquecido |
+
+Por esses motivos, em tabelas que são ou podem vir a ser referenciadas por outras, a chave gerada é a escolha recomendada. A chave composta continua aceitável em tabelas que ninguém referencia e que existem só para ligar duas outras, como `credenciamento`, ou para guardar os valores de um atributo multivalorado, como `telefone`. Neste roteiro, as três tabelas mantêm a chave composta, porque são a tradução direta do diagrama e porque nenhuma outra tabela as referencia.
+
+**Atenção.** A chave gerada não dispensa a regra do minimundo. Sem o `UNIQUE (consulta_id, numero)`, a tabela aceitaria dois exames com o número 2 na mesma consulta, cada um com o seu `id`, e a chave gerada não perceberia a repetição.
+
+As tabelas `resultado_exame` e `exame_pedido` servem só para a comparação. Se forem criadas para teste, devem ser removidas em seguida, com `DROP TABLE resultado_exame` e `DROP TABLE exame_pedido`, nessa ordem.
+
 ---
 
 ## 5. Parte 3. A carga e as restrições
@@ -542,19 +603,34 @@ ORDER BY
 
 ### 6.3 A junção de uma tabela com ela mesma
 
-Para listar cada dependente com o nome do seu titular, a tabela `paciente` precisa aparecer duas vezes na mesma consulta, uma no papel de dependente e outra no papel de titular. Cada ocorrência recebe o seu apelido, e o servidor as trata como duas tabelas distintas. Como os nomes estão na superclasse, `pessoa` também aparece duas vezes.
+A pergunta é: qual é o titular de cada dependente? Cada linha da resposta reúne dados de **duas linhas diferentes** da tabela `paciente`: a linha do dependente, onde está `titular_id`, e a linha do titular, apontada por esse valor. Uma tabela escrita uma única vez no `FROM` oferece uma linha de cada vez, e não há como ler, na mesma linha do resultado, o paciente e o titular dele. Por isso `paciente` precisa aparecer duas vezes na consulta, uma no papel de dependente e outra no papel de titular. Como os nomes estão na superclasse, `pessoa` também aparece duas vezes, uma para o nome de cada papel.
+
+#### 6.3.1 Um apelido para cada papel
+
+Quando a mesma tabela aparece mais de uma vez no `FROM`, cada ocorrência recebe um **apelido** próprio, e o servidor passa a tratar as ocorrências como se fossem tabelas distintas, cada uma percorrendo as suas próprias linhas. O Elmasri chama esses apelidos de **variáveis de tupla** e descreve as duas ocorrências como duas cópias da mesma relação, uma em cada papel, embora exista apenas uma tabela (ELMASRI e NAVATHE, seção 6.3.2). O exemplo do livro é o mesmo caso do consultório: o funcionário e o seu supervisor, ambos na tabela de funcionários.
+
+Os apelidos desta consulta seguem uma regra de formação para que a leitura revele o papel de cada ocorrência: as duas primeiras letras indicam a tabela, `pa` para `paciente` e `pe` para `pessoa`, e a terceira indica o papel, `d` para dependente e `t` para titular.
+
+| Apelido | Tabela | Papel | Para que serve na consulta |
+|---|---|---|---|
+| `pad` | `paciente` | dependente | linha do dependente, com `titular_id` |
+| `ped` | `pessoa` | dependente | nome do dependente |
+| `pat` | `paciente` | titular | linha do titular, apontada por `pad.titular_id` |
+| `pet` | `pessoa` | titular | nome do titular |
+
+#### 6.3.2 A consulta
 
 ```sql
 SELECT
-    dep.nome AS dependente,
-    tit.nome AS titular
+    ped.nome AS dependente,
+    pet.nome AS titular
 FROM
-    paciente AS d
-    INNER JOIN pessoa   AS dep ON dep.id = d.pessoa_id
-    INNER JOIN paciente AS t   ON t.pessoa_id = d.titular_id
-    INNER JOIN pessoa   AS tit ON tit.id = t.pessoa_id
+    paciente AS pad
+    INNER JOIN pessoa   AS ped ON ped.id = pad.pessoa_id
+    INNER JOIN paciente AS pat ON pat.pessoa_id = pad.titular_id
+    INNER JOIN pessoa   AS pet ON pet.id = pat.pessoa_id
 ORDER BY
-    dep.nome;
+    ped.nome;
 ```
 
 | dependente | titular |
@@ -563,7 +639,74 @@ ORDER BY
 | Lucas Ferreira | João Silva |
 | Mariana Gomes | José Santos |
 
-Os apelidos `d` e `t` correspondem aos dois papéis do autorrelacionamento. A condição `t.pessoa_id = d.titular_id` liga o dependente ao titular pela chave estrangeira que aponta para a própria tabela. O `INNER JOIN` descarta os pacientes sem titular, que são os próprios titulares. Essa forma de junção é chamada de autojunção (ELMASRI e NAVATHE, seção 7.1.6).
+Cada condição `ON` liga duas ocorrências pela chave estrangeira que existe entre elas. A primeira e a última ligam uma subclasse à superclasse, como na seção 6.1. A do meio é a do autorrelacionamento: `pat.pessoa_id = pad.titular_id` procura, entre todos os pacientes, aquele cuja chave é igual ao titular guardado na linha do dependente. É a chave estrangeira `titular_id`, da seção 4.5, que aponta para a própria tabela. Essa forma de junção é chamada de **autojunção**.
+
+#### 6.3.3 A construção passo a passo
+
+A consulta pode ser lida na ordem em que o `FROM` é montado, uma junção de cada vez, observando quantas linhas restam depois de cada passo.
+
+| Passo | O que entra no `FROM` | Linhas | O que passa a estar disponível |
+|---|---|---|---|
+| 1 | `paciente AS pad` | 16 | a chave e o `titular_id` de cada paciente, nulo em 13 deles |
+| 2 | `INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id` | 16 | o nome de cada paciente, `ped.nome` |
+| 3 | `INNER JOIN paciente AS pat ON pat.pessoa_id = pad.titular_id` | 3 | a linha do titular de cada dependente |
+| 4 | `INNER JOIN pessoa AS pet ON pet.id = pat.pessoa_id` | 3 | o nome do titular, `pet.nome` |
+
+O número de linhas cai no passo 3. Nos 13 pacientes sem titular, `pad.titular_id` é nulo, e a comparação `pat.pessoa_id = NULL` não é verdadeira para nenhuma linha de `pat`. Sem par, essas linhas são descartadas pelo `INNER JOIN`, e ficam só os três dependentes. Depois do passo 3, cada linha intermediária já contém o dependente e o titular lado a lado.
+
+| `pad.pessoa_id` | `ped.nome` | `pad.titular_id` | `pat.pessoa_id` |
+|---|---|---|---|
+| 11 | Lucas Ferreira | 1 | 1 |
+| 12 | Mariana Gomes | 3 | 3 |
+| 14 | Laura Mendes | 13 | 13 |
+
+#### 6.3.4 Uma linha do resultado
+
+A linha de Lucas Ferreira mostra de onde vem cada valor. Ela combina quatro linhas, de duas tabelas, cada uma lida por um apelido diferente.
+
+| Apelido | Linha usada | Valor aproveitado |
+|---|---|---|
+| `pad` | paciente 11, com `titular_id` 1 | o titular a procurar |
+| `ped` | pessoa 11 | `nome` = Lucas Ferreira |
+| `pat` | paciente 1 | confirma que o titular é paciente |
+| `pet` | pessoa 1 | `nome` = João Silva |
+
+#### 6.3.5 O que o `INNER JOIN` descarta
+
+A participação no autorrelacionamento é parcial, pela seção 3.3: um paciente pode não ter titular. Para listar todos os pacientes, cada um com o seu titular quando houver, as duas junções do lado do titular passam a ser `LEFT JOIN`, e o titular ausente aparece como nulo.
+
+```sql
+SELECT
+    ped.nome AS paciente,
+    pet.nome AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa   AS ped ON ped.id = pad.pessoa_id
+    LEFT JOIN  paciente AS pat ON pat.pessoa_id = pad.titular_id
+    LEFT JOIN  pessoa   AS pet ON pet.id = pat.pessoa_id
+ORDER BY
+    ped.nome;
+```
+
+A consulta devolve 16 linhas, uma por paciente. As três primeiras em ordem alfabética são Ana Oliveira, André Moreira e Beatriz Nascimento, todas com o titular nulo, e só Laura Mendes, Lucas Ferreira e Mariana Gomes têm titular preenchido. As duas junções do lado do titular precisam ser externas: se apenas a segunda fosse `LEFT JOIN`, o `INNER JOIN` com `pat` já teria descartado os titulares no passo 3.
+
+#### 6.3.6 Uma forma mais curta
+
+A coluna `titular_id` referencia `paciente (pessoa_id)`, e `pessoa_id` é o mesmo valor de `pessoa.id`. Por isso o nome do titular pode ser obtido ligando `pet` diretamente a `pad.titular_id`, sem a ocorrência `pat`.
+
+```sql
+SELECT
+    ped.nome AS dependente,
+    pet.nome AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+    INNER JOIN pessoa AS pet ON pet.id = pad.titular_id
+ORDER BY
+    ped.nome;
+```
+
+O resultado é o mesmo. A forma com quatro tabelas deixa explícitos os dois papéis do autorrelacionamento e é a que se usa quando alguma coluna do titular em `paciente` é necessária, como a data de cadastro. A forma curta é a da visão `vw_dependente`, no exercício 9. A seção 8.11 responde à mesma pergunta com subconsulta e com a cláusula `WITH`.
 
 ### 6.4 O relacionamento N:M e a entidade fraca
 
@@ -729,7 +872,7 @@ A especialidade da consulta não está em `consulta`: está no médico, e o nome
 
 ### 8.1 Uma consulta dentro de outra
 
-Algumas perguntas dependem de um valor que só outra consulta conhece. "Quais consultas custaram mais que a média?" exige saber a média antes de filtrar. Uma **subconsulta** é uma instrução `SELECT` escrita entre parênteses dentro de outra instrução, e o seu resultado é usado pela consulta externa (ELMASRI e NAVATHE, seção 7.1.2).
+Algumas perguntas dependem de um valor que só outra consulta conhece. "Quais consultas custaram mais que a média?" exige saber a média antes de filtrar. Uma **subconsulta** é uma instrução `SELECT` escrita entre parênteses dentro de outra instrução, e o seu resultado é usado pela consulta externa (ELMASRI e NAVATHE, seção 7.1.2). O Elmasri a chama de **consulta aninhada**, porque uma consulta fica contida na outra como uma caixa dentro de outra caixa. A instrução de dentro é a consulta interna, e a que a contém é a consulta externa. Uma subconsulta pode conter outra subconsulta, e o servidor resolve a mais interna primeiro, salvo quando ela é correlacionada, caso tratado na seção 8.4.
 
 ```sql
 SELECT
@@ -883,18 +1026,18 @@ As quatro maiores de cada médico são consultas particulares, que custam mais q
 ```sql
 -- Titulares e o numero de dependentes de cada um
 SELECT
-    pe.nome AS titular,
+    pet.nome AS titular,
     (SELECT COUNT(*)
-     FROM paciente AS d
-     WHERE d.titular_id = pa.pessoa_id) AS dependentes
+     FROM paciente AS pad
+     WHERE pad.titular_id = pat.pessoa_id) AS dependentes
 FROM
-    paciente AS pa
-    INNER JOIN pessoa AS pe ON pe.id = pa.pessoa_id
+    paciente AS pat
+    INNER JOIN pessoa AS pet ON pet.id = pat.pessoa_id
 WHERE
-    pa.titular_id IS NULL
+    pat.titular_id IS NULL
 ORDER BY
     dependentes DESC,
-    pa.pessoa_id
+    pat.pessoa_id
 LIMIT 5;
 ```
 
@@ -940,6 +1083,249 @@ WHERE
 | Nova Saúde |
 
 **Atenção.** Quando a coluna da subconsulta pode ser nula, a negação deve ser escrita com `NOT EXISTS`, e não com `NOT IN`.
+
+### 8.8 A subconsulta no `FROM`: a tabela derivada
+
+As subconsultas das seções anteriores aparecem no `WHERE` e no `SELECT` e devolvem um valor ou uma lista. Uma subconsulta também pode aparecer no `FROM`, no lugar de uma tabela. O resultado dela é uma tabela, com linhas e colunas, que existe apenas durante a execução da instrução e é usada pela consulta externa como qualquer outra tabela, inclusive em junções. Essa tabela é chamada de **tabela derivada**, e o Elmasri a descreve como uma **visão em linha**, porque funciona como uma visão escrita dentro da própria consulta (ELMASRI e NAVATHE, seção 19.2.3).
+
+A consulta mais cara de cada médico, resolvida na seção 8.6 com uma subconsulta correlacionada, pode ser escrita em duas etapas. Primeiro, uma consulta agrupada calcula o maior valor de cada médico.
+
+```sql
+SELECT
+    medico_id,
+    MAX(valor) AS maior
+FROM
+    consulta
+GROUP BY
+    medico_id
+ORDER BY
+    medico_id;
+```
+
+| medico_id | maior |
+|---|---|
+| 16 | 320.00 |
+| 17 | 250.00 |
+| 18 | 300.00 |
+| 19 | 280.00 |
+
+Em seguida, essa consulta é colocada entre parênteses no `FROM`, recebe o apelido `mx` e é ligada a `consulta` pelas duas colunas: o médico e o valor.
+
+```sql
+SELECT
+    pm.nome AS medico,
+    c.id    AS consulta,
+    c.valor
+FROM
+    consulta AS c
+    INNER JOIN (SELECT medico_id, MAX(valor) AS maior
+                FROM consulta
+                GROUP BY medico_id) AS mx
+            ON mx.medico_id = c.medico_id
+           AND mx.maior     = c.valor
+    INNER JOIN pessoa AS pm ON pm.id = c.medico_id
+ORDER BY
+    pm.nome;
+```
+
+| medico | consulta | valor |
+|---|---|---|
+| Beatriz Nascimento | 3 | 250.00 |
+| Camila Rodrigues | 9 | 280.00 |
+| Paulo Araújo | 18 | 320.00 |
+| Victor Almeida | 14 | 300.00 |
+
+O resultado é o da seção 8.6, mas a execução é diferente. A subconsulta correlacionada da seção 8.6 é avaliada de novo para cada consulta da tabela externa. A tabela derivada não menciona nenhuma coluna de fora, é calculada uma única vez, com uma linha por médico, e só então participa da junção.
+
+A tabela derivada sempre recebe um apelido, porque é por ele que as suas colunas são mencionadas na consulta externa, como `mx.maior`. O padrão SQL exige o apelido. O PostgreSQL 17 do laboratório aceita a subconsulta no `FROM` sem apelido, mas as versões anteriores à 16 a recusam com a mensagem `subquery in FROM must have an alias`, e, sem o apelido, as colunas dela não podem ser qualificadas. As colunas calculadas também precisam de nome, como `MAX(valor) AS maior`, para que a consulta externa possa usá-las.
+
+### 8.9 O mapa das subconsultas aninhadas
+
+As subconsultas deste roteiro podem ser classificadas por dois critérios: o lugar em que aparecem e a forma do resultado que devolvem. O lugar determina a forma exigida.
+
+| Onde aparece | O que deve devolver | Nome | Exemplo no roteiro |
+|---|---|---|---|
+| `WHERE`, em comparação com `=`, `>` ou `<` | uma linha e uma coluna | subconsulta escalar | 8.2, valor acima da média |
+| `WHERE`, com `IN` ou `NOT IN` | uma coluna, várias linhas | subconsulta de lista | 8.3, pacientes com consulta particular |
+| `WHERE`, com `EXISTS` ou `NOT EXISTS` | qualquer número de linhas, e só importa se há alguma | subconsulta de existência | 8.4 e 8.5 |
+| lista do `SELECT` | uma linha e uma coluna para cada linha de fora | subconsulta escalar | 8.6, número de dependentes |
+| `FROM` | uma tabela, com apelido | tabela derivada | 8.8, maior valor por médico |
+
+O segundo critério é a dependência em relação à consulta externa. A subconsulta **não correlacionada** não menciona colunas de fora, pode ser executada sozinha e é calculada uma vez, como em 8.2, 8.3 e 8.8. A subconsulta **correlacionada** menciona uma coluna da consulta externa, não pode ser executada sozinha e é avaliada de novo para cada linha de fora, como em 8.4, 8.5 e 8.6.
+
+Quando a forma do resultado não corresponde ao lugar, o servidor recusa a instrução. Uma subconsulta usada como valor que devolve mais de uma linha produz o erro abaixo, e a correção é trocar a comparação por `IN` ou restringir a subconsulta a uma linha.
+
+```
+ERROR:  more than one row returned by a subquery used as an expression
+```
+
+Uma subconsulta escalar que não encontra nenhuma linha não produz erro: devolve nulo. Essa diferença reaparece na seção 8.11.
+
+### 8.10 A cláusula `WITH`: a consulta nomeada
+
+Uma tabela derivada extensa, ou várias delas, tornam a instrução difícil de ler, porque a consulta precisa ser lida de dentro para fora. A cláusula `WITH` permite escrever cada etapa antes da consulta principal, com um nome, e usá-la em seguida como se fosse uma tabela. O Elmasri descreve o `WITH` como uma forma de definir uma tabela usada apenas em uma consulta específica, semelhante a uma visão que é descartada ao final dessa consulta (ELMASRI e NAVATHE, seção 7.1.9). Cada consulta nomeada pela cláusula `WITH` é chamada de **expressão de tabela comum**, do inglês *common table expression*, de onde vem a sigla **CTE**.
+
+A forma geral é a seguinte.
+
+```sql
+WITH
+nome_1 AS (
+    SELECT ...
+),
+nome_2 AS (
+    SELECT ...
+)
+SELECT ...
+FROM nome_1 ...;
+```
+
+As CTEs são separadas por vírgula, e não há vírgula depois da última. A consulta principal vem logo depois do parêntese de fechamento da última CTE, e toda a construção é **uma única instrução**, encerrada por um único ponto e vírgula. Uma CTE pode usar as CTEs escritas antes dela.
+
+A consulta da seção 8.8, reescrita com `WITH`, apresenta primeiro a etapa do maior valor, com o nome `maior_valor`, e depois a consulta que a usa.
+
+```sql
+WITH maior_valor AS (
+    SELECT medico_id, MAX(valor) AS maior
+    FROM consulta
+    GROUP BY medico_id
+)
+SELECT
+    pm.nome AS medico,
+    c.id    AS consulta,
+    c.valor
+FROM
+    consulta AS c
+    INNER JOIN maior_valor AS mv ON mv.medico_id = c.medico_id
+                                AND mv.maior     = c.valor
+    INNER JOIN pessoa AS pm ON pm.id = c.medico_id
+ORDER BY
+    pm.nome;
+```
+
+O resultado são as mesmas quatro linhas da seção 8.8. O conteúdo de `maior_valor` é a tabela derivada `mx`, agora com um nome que diz o que ela guarda, e a consulta principal fica curta, sem parênteses aninhados no `FROM`.
+
+Uma CTE pode ser usada mais de uma vez na consulta principal, o que uma subconsulta não permite sem ser repetida. Na consulta abaixo, a média calculada na CTE `media` é usada no `SELECT`, para calcular a diferença, e no `WHERE`, para filtrar.
+
+```sql
+WITH media AS (
+    SELECT ROUND(AVG(valor), 2) AS valor
+    FROM consulta
+)
+SELECT
+    c.id,
+    c.valor,
+    c.valor - media.valor AS acima_da_media
+FROM
+    consulta AS c
+    CROSS JOIN media
+WHERE
+    c.valor > media.valor
+ORDER BY
+    acima_da_media DESC,
+    c.id;
+```
+
+| id | valor | acima_da_media |
+|---|---|---|
+| 18 | 320.00 | 123.50 |
+| 14 | 300.00 | 103.50 |
+| 9 | 280.00 | 83.50 |
+| 3 | 250.00 | 53.50 |
+| 4 | 200.00 | 3.50 |
+| 7 | 200.00 | 3.50 |
+| 19 | 200.00 | 3.50 |
+
+A CTE `media` tem uma linha e uma coluna. O `CROSS JOIN`, visto nos slides desta aula, combina cada consulta com essa única linha, e o valor da média fica disponível em todas as linhas. Com uma linha de um lado, o produto cartesiano não multiplica o resultado. As sete consultas são as da seção 8.2.
+
+A CTE, a tabela derivada e a visão da Parte 8 dão nome, de maneiras diferentes, a uma consulta que é usada como tabela.
+
+| Característica | Tabela derivada | CTE, `WITH` | Visão, `CREATE VIEW` |
+|---|---|---|---|
+| Onde é escrita | dentro do `FROM` | antes da consulta principal | em uma instrução própria |
+| Quanto tempo existe | durante a instrução | durante a instrução | até `DROP VIEW` |
+| Pode ser usada por outras instruções | não | não | sim |
+| Pode ser usada mais de uma vez na mesma instrução | não, precisa ser repetida | sim | sim |
+| Ordem de leitura | de dentro para fora | de cima para baixo | pelo nome |
+
+**Atenção.** Na extensão Database Client, a instrução com `WITH` é executada como as demais, com `Ctrl+Enter` e o cursor no final da última linha, a do ponto e vírgula. Como toda a construção é uma única instrução, não deve haver linha em branco nem ponto e vírgula entre as CTEs e a consulta principal.
+
+### 8.11 Uma pergunta, quatro formas: dependentes e titulares
+
+A pergunta da seção 6.3, qual é o titular de cada dependente, pode ser respondida com cada uma das construções desta parte. As quatro formas abaixo devolvem as mesmas três linhas: Laura Mendes com Felipe Ribeiro, Lucas Ferreira com João Silva e Mariana Gomes com José Santos. Os apelidos seguem a regra da seção 6.3.1.
+
+**Forma 1. Autojunção.** É a consulta da seção 6.3.2: `paciente` e `pessoa` aparecem duas vezes cada, uma por papel, e as junções percorrem as chaves estrangeiras.
+
+**Forma 2. Subconsulta escalar correlacionada no `SELECT`.** O nome do titular é buscado por uma subconsulta, avaliada para cada dependente.
+
+```sql
+SELECT
+    ped.nome AS dependente,
+    (SELECT pet.nome
+     FROM pessoa AS pet
+     WHERE pet.id = pad.titular_id) AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+WHERE
+    pad.titular_id IS NOT NULL
+ORDER BY
+    ped.nome;
+```
+
+A subconsulta menciona `pad.titular_id`, coluna da consulta externa, e por isso é correlacionada. Ela devolve uma linha, porque `pet.id` é chave primária. O `WHERE pad.titular_id IS NOT NULL` é indispensável nesta forma. Na autojunção, o `INNER JOIN` descarta os pacientes sem titular. A subconsulta escalar não descarta nada: para um titular, ela não encontra linha e devolve nulo, como dito na seção 8.9. Sem o `WHERE`, a consulta devolveria os 16 pacientes, 13 deles com o titular nulo, o mesmo resultado do `LEFT JOIN` da seção 6.3.5.
+
+**Forma 3. Tabela derivada.** Os dependentes, com o nome e o titular, são calculados em uma subconsulta no `FROM`, e o nome do titular vem de uma junção com `pessoa`.
+
+```sql
+SELECT
+    dep.nome AS dependente,
+    pet.nome AS titular
+FROM
+    (SELECT pad.titular_id, ped.nome
+     FROM paciente AS pad
+          INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+     WHERE pad.titular_id IS NOT NULL) AS dep
+    INNER JOIN pessoa AS pet ON pet.id = dep.titular_id
+ORDER BY
+    dep.nome;
+```
+
+**Forma 4. CTE.** Cada papel vira uma consulta nomeada, `dependentes` e `titulares`, e a consulta principal só liga os dois papéis.
+
+```sql
+WITH
+dependentes AS (
+    SELECT pad.titular_id, ped.nome
+    FROM paciente AS pad
+         INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+    WHERE pad.titular_id IS NOT NULL
+),
+titulares AS (
+    SELECT pat.pessoa_id, pet.nome
+    FROM paciente AS pat
+         INNER JOIN pessoa AS pet ON pet.id = pat.pessoa_id
+    WHERE pat.titular_id IS NULL
+)
+SELECT
+    dependentes.nome AS dependente,
+    titulares.nome   AS titular
+FROM
+    dependentes
+    INNER JOIN titulares ON titulares.pessoa_id = dependentes.titular_id
+ORDER BY
+    dependentes.nome;
+```
+
+Nesta forma, os dois papéis do autorrelacionamento ganham nome próprio, e a última junção se lê como a regra 4 do minimundo: o dependente liga-se ao titular pelo `titular_id`. Os nomes das CTEs estão no plural, `dependentes` e `titulares`, para não se confundirem com os nomes das colunas do resultado, `dependente` e `titular`. A CTE `titulares` reúne os pacientes sem titular, que pela regra 4 são os que podem ter dependentes.
+
+| Forma | Como chega ao titular | Como os titulares saem do resultado | Indicada quando |
+|---|---|---|---|
+| Autojunção | junção pela chave estrangeira | o `INNER JOIN` descarta | a resposta precisa de várias colunas dos dois papéis |
+| Subconsulta no `SELECT` | uma busca para cada dependente | o `WHERE` explícito | só uma coluna do outro papel é necessária |
+| Tabela derivada | junção com o resultado de uma subconsulta | o `WHERE` dentro da subconsulta | uma etapa intermediária, como uma agregação, precede a junção |
+| CTE | junção entre consultas nomeadas | o `WHERE` de cada CTE | há várias etapas, ou a mesma etapa é usada mais de uma vez |
+
+As quatro formas são equivalentes. Para esta pergunta, a autojunção é a mais curta. A subconsulta e a CTE mostram o caminho de outra maneira, e passam a ser preferíveis quando a pergunta exige etapas intermediárias, como na seção 8.10.
 
 ---
 
@@ -1339,10 +1725,17 @@ As contagens de `pessoa` e `paciente` incluem Helena Prado, cadastrada na seçã
 | `duplicate key value violates unique constraint "paciente_pkey"` | A mesma pessoa cadastrada duas vezes como paciente | Conferir se a pessoa já é paciente antes de inserir |
 | `insert or update on table "medico" violates foreign key constraint` com `is not present in table "pessoa"` | Médico inserido antes da pessoa | Inserir a pessoa primeiro, de preferência na mesma transação |
 | `column reference "nome" is ambiguous` | `pessoa` usada duas vezes, ou `nome` existente em mais de uma tabela, sem apelido | Prefixar com o apelido de cada ocorrência |
-| Autojunção sem resultado | Condição invertida, `d.pessoa_id = t.titular_id` | Ligar a chave estrangeira do dependente à chave do titular |
+| Autojunção sem resultado | Condição invertida, `pad.pessoa_id = pat.titular_id` | Ligar a chave estrangeira do dependente à chave do titular, `pat.pessoa_id = pad.titular_id` |
+| Autojunção que devolve titulares com titular nulo | Junção do titular escrita como `LEFT JOIN`, ou subconsulta no `SELECT` sem o filtro | Usar `INNER JOIN` ou acrescentar `WHERE pad.titular_id IS NOT NULL` |
+| `there is no unique constraint matching given keys for referenced table "exame_solicitado"` | Chave estrangeira que referencia só uma parte de uma chave composta | Referenciar todas as colunas da chave, ou usar a chave gerada da seção 4.8 |
 | `aggregate functions are not allowed in WHERE` | Comparação direta com `AVG` no `WHERE` | Usar subconsulta escalar ou `HAVING` |
 | `more than one row returned by a subquery used as an expression` | Subconsulta escalar que devolve várias linhas | Usar `IN`, ou corrigir a subconsulta para devolver uma linha |
 | `NOT IN` sem nenhuma linha, sem erro | Nulo na lista devolvida pela subconsulta | Usar `NOT EXISTS` |
+| `subquery in FROM must have an alias` | Tabela derivada sem apelido, em versões anteriores à 16 | Dar um apelido depois do parêntese, `AS mx` |
+| `missing FROM-clause entry for table "mx"` | Coluna de uma tabela derivada ou CTE mencionada por um nome que não foi declarado | Usar o apelido ou o nome dado no `FROM` ou no `WITH` |
+| `syntax error at or near` o nome da segunda CTE | Falta a vírgula entre duas CTEs | Separar as CTEs por vírgula |
+| `syntax error at or near "SELECT"` logo depois de uma CTE | Vírgula depois da última CTE | Retirar a vírgula antes da consulta principal |
+| `syntax error at or near ";"` no fim do `WITH`, seguido de `relation "maior_valor" does not exist` | `WITH` e consulta principal separados por ponto e vírgula ou executados separadamente | Executar o `WITH` e a consulta principal como uma única instrução |
 | `each UNION query must have the same number of columns` | Consultas incompatíveis na operação de conjunto | Igualar o número e a ordem das colunas |
 | `current transaction is aborted, commands ignored until end of transaction block` | Instrução enviada depois de um erro dentro da transação | Encerrar com `ROLLBACK` e recomeçar |
 | `cannot drop table consulta because other objects depend on it` | A visão `vw_consulta` depende da tabela | Remover a visão antes, pela seção 2.2 |
@@ -1351,7 +1744,7 @@ As contagens de `pessoa` e `paciente` incluem Helena Prado, cadastrada na seçã
 
 ## 15. Script consolidado
 
-Todo o código do roteiro, na ordem de execução. As instruções que o servidor recusa de propósito, nas seções 5.2 e 11.3, e as consultas de demonstração da seção 9.4 ficam fora.
+Todo o código do roteiro, na ordem de execução. As instruções que o servidor recusa de propósito, nas seções 5.2 e 11.3, as tabelas de comparação da seção 4.8 e as consultas de demonstração da seção 9.4 ficam fora.
 
 ```sql
 -- ===============================================================
@@ -1560,15 +1953,36 @@ ORDER BY
     pe.nome;
 
 SELECT
-    dep.nome AS dependente,
-    tit.nome AS titular
+    ped.nome AS dependente,
+    pet.nome AS titular
 FROM
-    paciente AS d
-    INNER JOIN pessoa   AS dep ON dep.id = d.pessoa_id
-    INNER JOIN paciente AS t   ON t.pessoa_id = d.titular_id
-    INNER JOIN pessoa   AS tit ON tit.id = t.pessoa_id
+    paciente AS pad
+    INNER JOIN pessoa   AS ped ON ped.id = pad.pessoa_id
+    INNER JOIN paciente AS pat ON pat.pessoa_id = pad.titular_id
+    INNER JOIN pessoa   AS pet ON pet.id = pat.pessoa_id
 ORDER BY
-    dep.nome;
+    ped.nome;
+
+SELECT
+    ped.nome AS paciente,
+    pet.nome AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa   AS ped ON ped.id = pad.pessoa_id
+    LEFT JOIN  paciente AS pat ON pat.pessoa_id = pad.titular_id
+    LEFT JOIN  pessoa   AS pet ON pet.id = pat.pessoa_id
+ORDER BY
+    ped.nome;
+
+SELECT
+    ped.nome AS dependente,
+    pet.nome AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+    INNER JOIN pessoa AS pet ON pet.id = pad.titular_id
+ORDER BY
+    ped.nome;
 
 SELECT
     pm.nome AS medico,
@@ -1706,18 +2120,18 @@ ORDER BY
     c.id;
 
 SELECT
-    pe.nome AS titular,
+    pet.nome AS titular,
     (SELECT COUNT(*)
-     FROM paciente AS d
-     WHERE d.titular_id = pa.pessoa_id) AS dependentes
+     FROM paciente AS pad
+     WHERE pad.titular_id = pat.pessoa_id) AS dependentes
 FROM
-    paciente AS pa
-    INNER JOIN pessoa AS pe ON pe.id = pa.pessoa_id
+    paciente AS pat
+    INNER JOIN pessoa AS pet ON pet.id = pat.pessoa_id
 WHERE
-    pa.titular_id IS NULL
+    pat.titular_id IS NULL
 ORDER BY
     dependentes DESC,
-    pa.pessoa_id
+    pat.pessoa_id
 LIMIT 5;
 
 SELECT
@@ -1728,6 +2142,113 @@ WHERE
     NOT EXISTS (SELECT 1
                 FROM consulta AS c
                 WHERE c.convenio_id = cv.id);
+
+-- Subconsulta no FROM e clausula WITH
+SELECT
+    medico_id,
+    MAX(valor) AS maior
+FROM
+    consulta
+GROUP BY
+    medico_id
+ORDER BY
+    medico_id;
+
+SELECT
+    pm.nome AS medico,
+    c.id    AS consulta,
+    c.valor
+FROM
+    consulta AS c
+    INNER JOIN (SELECT medico_id, MAX(valor) AS maior
+                FROM consulta
+                GROUP BY medico_id) AS mx
+            ON mx.medico_id = c.medico_id
+           AND mx.maior     = c.valor
+    INNER JOIN pessoa AS pm ON pm.id = c.medico_id
+ORDER BY
+    pm.nome;
+
+WITH maior_valor AS (
+    SELECT medico_id, MAX(valor) AS maior
+    FROM consulta
+    GROUP BY medico_id
+)
+SELECT
+    pm.nome AS medico,
+    c.id    AS consulta,
+    c.valor
+FROM
+    consulta AS c
+    INNER JOIN maior_valor AS mv ON mv.medico_id = c.medico_id
+                                AND mv.maior     = c.valor
+    INNER JOIN pessoa AS pm ON pm.id = c.medico_id
+ORDER BY
+    pm.nome;
+
+WITH media AS (
+    SELECT ROUND(AVG(valor), 2) AS valor
+    FROM consulta
+)
+SELECT
+    c.id,
+    c.valor,
+    c.valor - media.valor AS acima_da_media
+FROM
+    consulta AS c
+    CROSS JOIN media
+WHERE
+    c.valor > media.valor
+ORDER BY
+    acima_da_media DESC,
+    c.id;
+
+SELECT
+    ped.nome AS dependente,
+    (SELECT pet.nome
+     FROM pessoa AS pet
+     WHERE pet.id = pad.titular_id) AS titular
+FROM
+    paciente AS pad
+    INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+WHERE
+    pad.titular_id IS NOT NULL
+ORDER BY
+    ped.nome;
+
+SELECT
+    dep.nome AS dependente,
+    pet.nome AS titular
+FROM
+    (SELECT pad.titular_id, ped.nome
+     FROM paciente AS pad
+          INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+     WHERE pad.titular_id IS NOT NULL) AS dep
+    INNER JOIN pessoa AS pet ON pet.id = dep.titular_id
+ORDER BY
+    dep.nome;
+
+WITH
+dependentes AS (
+    SELECT pad.titular_id, ped.nome
+    FROM paciente AS pad
+         INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+    WHERE pad.titular_id IS NOT NULL
+),
+titulares AS (
+    SELECT pat.pessoa_id, pet.nome
+    FROM paciente AS pat
+         INNER JOIN pessoa AS pet ON pet.id = pat.pessoa_id
+    WHERE pat.titular_id IS NULL
+)
+SELECT
+    dependentes.nome AS dependente,
+    titulares.nome   AS titular
+FROM
+    dependentes
+    INNER JOIN titulares ON titulares.pessoa_id = dependentes.titular_id
+ORDER BY
+    dependentes.nome;
 
 -- ---------------------------------------------------------------
 -- Parte 7. Operacoes de conjunto
@@ -1901,6 +2422,12 @@ Os enunciados devem ser resolvidos sem consultar a seção 17, na ordem em que a
 11. A recepção propôs acrescentar à tabela `consulta` a coluna `especialidade`, para não precisar de junção ao listar as consultas. Indicar a dependência que essa coluna criaria, qual forma normal seria violada e qual anomalia de modificação ela provocaria.
 12. Na planilha da Parte 10, a coluna `convenio` guarda o nome do convênio. Indicar por que essa coluna não viola a 3FN na planilha, e o que mudaria se a planilha guardasse também o telefone de contato de cada convênio.
 
+**Chaves, tabela derivada e cláusula `WITH`**
+
+13. Reescrever a consulta do exercício 7 com a cláusula `WITH`, em uma CTE `media_especialidade` que calcule a média de cada especialidade, e explicar a diferença de execução em relação à subconsulta correlacionada.
+14. Listar os titulares que têm dependentes, com o número de dependentes de cada um, usando uma tabela derivada que agrupe `paciente` por `titular_id`. Ordenar pela chave do titular.
+15. O consultório passará a registrar o repasse mensal de cada credenciamento, com o mês e o valor, em uma tabela `repasse`. Escrever a tabela `repasse` referenciando `credenciamento` com a chave composta atual e explicar o que mudaria se `credenciamento` tivesse uma chave gerada.
+
 ---
 
 ## 17. Gabarito
@@ -2040,12 +2567,12 @@ FROM especialidade AS e
 ```sql
 CREATE VIEW vw_dependente AS
 SELECT
-    dep.nome AS dependente,
-    tit.nome AS titular
+    ped.nome AS dependente,
+    pet.nome AS titular
 FROM
-    paciente AS d
-    INNER JOIN pessoa AS dep ON dep.id = d.pessoa_id
-    INNER JOIN pessoa AS tit ON tit.id = d.titular_id;
+    paciente AS pad
+    INNER JOIN pessoa AS ped ON ped.id = pad.pessoa_id
+    INNER JOIN pessoa AS pet ON pet.id = pad.titular_id;
 
 SELECT
     dependente,
@@ -2062,7 +2589,7 @@ ORDER BY
 | Lucas Ferreira | João Silva |
 | Mariana Gomes | José Santos |
 
-A visão liga o dependente diretamente à pessoa do titular, porque `titular_id` já é a chave da pessoa. A passagem pela segunda ocorrência de `paciente`, feita na seção 6.3, não é necessária.
+A visão liga o dependente diretamente à pessoa do titular, porque `titular_id` já é a chave da pessoa. A passagem pela segunda ocorrência de `paciente`, `pat`, feita na seção 6.3.2, não é necessária, como mostra a seção 6.3.6.
 
 ### Exercício 10
 
@@ -2091,8 +2618,85 @@ A coluna criaria a dependência `medico_id → especialidade` dentro de `consult
 
 Na planilha, `convenio` é um atributo da consulta, determinado pela chave `consulta`, e nenhum outro atributo depende dele: a coluna não cria dependência transitiva. Se a planilha guardasse também o telefone do convênio, surgiria `convenio → telefone_convenio`, e o telefone dependeria da chave por meio do convênio, uma dependência transitiva. A 3FN exigiria uma tabela de convênios, com o nome e o telefone, referenciada pela consulta, que é a tabela `convenio` da Parte 2.
 
+### Exercício 13
+
+```sql
+WITH media_especialidade AS (
+    SELECT
+        m.especialidade_id,
+        AVG(c.valor) AS media
+    FROM
+        consulta AS c
+        INNER JOIN medico AS m ON m.pessoa_id = c.medico_id
+    GROUP BY
+        m.especialidade_id
+)
+SELECT
+    c.id,
+    e.nome AS especialidade,
+    c.valor
+FROM
+    consulta AS c
+    INNER JOIN medico              AS m  ON m.pessoa_id = c.medico_id
+    INNER JOIN especialidade       AS e  ON e.id = m.especialidade_id
+    INNER JOIN media_especialidade AS me ON me.especialidade_id = m.especialidade_id
+WHERE
+    c.valor > me.media
+ORDER BY
+    c.id;
+```
+
+| id | especialidade | valor |
+|---|---|---|
+| 3 | Clínica Geral | 250.00 |
+| 9 | Pediatria | 280.00 |
+| 14 | Ortopedia | 300.00 |
+| 18 | Cardiologia | 320.00 |
+
+O resultado é o do exercício 7. A consulta 21, do exercício 10, é da Ortopedia e custa 200.00, abaixo da nova média da especialidade, 220.00, e não entra. Na subconsulta correlacionada, a média da especialidade é calculada de novo para cada consulta da consulta externa. Na CTE, as médias são calculadas uma vez, uma linha por especialidade, e a consulta principal só faz a junção e a comparação.
+
+### Exercício 14
+
+```sql
+SELECT
+    pet.nome      AS titular,
+    dp.quantidade AS dependentes
+FROM
+    (SELECT titular_id, COUNT(*) AS quantidade
+     FROM paciente
+     WHERE titular_id IS NOT NULL
+     GROUP BY titular_id) AS dp
+    INNER JOIN pessoa AS pet ON pet.id = dp.titular_id
+ORDER BY
+    dp.titular_id;
+```
+
+| titular | dependentes |
+|---|---|
+| João Silva | 1 |
+| José Santos | 1 |
+| Felipe Ribeiro | 1 |
+
+A tabela derivada `dp` tem uma linha por titular com dependentes, e a junção com `pessoa` busca o nome. Ao contrário da subconsulta no `SELECT` da seção 8.6, que devolve zero para os titulares sem dependentes, a tabela derivada só tem linhas para quem aparece em `titular_id`.
+
+### Exercício 15
+
+```sql
+CREATE TABLE repasse (
+    id          INTEGER       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    medico_id   INTEGER       NOT NULL,
+    convenio_id INTEGER       NOT NULL,
+    mes         DATE          NOT NULL,
+    valor       NUMERIC(10,2) NOT NULL CHECK (valor > 0),
+    FOREIGN KEY (medico_id, convenio_id) REFERENCES credenciamento (medico_id, convenio_id),
+    UNIQUE (medico_id, convenio_id, mes)
+);
+```
+
+Com a chave composta, `repasse` repete as duas colunas da chave de `credenciamento`, e a chave estrangeira é composta. Uma chave estrangeira só para `medico_id` seria recusada com `there is no unique constraint matching given keys for referenced table "credenciamento"`, porque `medico_id` sozinho não é chave. Toda junção entre as duas tabelas precisa de duas igualdades. Se `credenciamento` tivesse `id` gerado e `UNIQUE (medico_id, convenio_id)`, `repasse` teria uma única coluna `credenciamento_id INTEGER NOT NULL REFERENCES credenciamento (id)`, com `UNIQUE (credenciamento_id, mes)`, e a junção teria uma igualdade. É a situação descrita na seção 4.8: a tabela deixou de ser apenas uma ligação entre duas outras e passou a ser referenciada, e a chave gerada se torna a escolha recomendada.
+
 ---
 
 ## 18. Referências
 
-ELMASRI, R. NAVATHE, S. B. *Sistemas de Banco de Dados*. 7. ed. São Paulo: Pearson, 2018. Seções 3.3 (tipos de entidade, atributos e chaves), 3.4 (relacionamentos, papéis e restrições estruturais), 3.5 (tipos de entidade fraca), 3.9 (relacionamentos de grau maior que dois), 4.1 a 4.3 (subclasses, especialização, generalização e suas restrições), 6.2 (restrições em SQL), 6.3.4 (operações de conjunto), 7.1 (consultas complexas, subconsultas, `EXISTS` e junções), 7.3 (visões), 9.1 e 9.2 (mapeamento do modelo para o relacional), 14.1 a 14.3 (diretrizes de projeto, dependências funcionais e formas normais) e 20.1 (transações).
+ELMASRI, R. NAVATHE, S. B. *Sistemas de Banco de Dados*. 7. ed. São Paulo: Pearson, 2018. Seções 3.3 (tipos de entidade, atributos e chaves), 3.4 (relacionamentos, papéis e restrições estruturais), 3.5 (tipos de entidade fraca), 3.9 (relacionamentos de grau maior que dois), 4.1 a 4.3 (subclasses, especialização, generalização e suas restrições), 3.3.2 (chave composta), 3.9.1 (chave artificial ou substituta), 6.2 (restrições em SQL), 6.3.2 (apelidos e variáveis de tupla), 6.3.4 (operações de conjunto), 7.1 (consultas complexas, consultas aninhadas, `EXISTS` e junções), 7.1.9 (a cláusula `WITH`), 7.1.10 (consultas recursivas), 7.3 (visões), 9.1 e 9.2 (mapeamento do modelo para o relacional), 9.2.3 (chave substituta), 14.1 a 14.3 (diretrizes de projeto, dependências funcionais e formas normais), 19.2.3 (subconsulta no `FROM` como visão em linha) e 20.1 (transações).
